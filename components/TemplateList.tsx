@@ -1,3 +1,4 @@
+// components/TemplateList.tsx
 "use client";
 
 import { Template } from '@/types';
@@ -7,12 +8,14 @@ interface TemplateListProps {
   templates: Template[];
   onDragStart: (template: Template, e: React.DragEvent) => void;
   onDragEnd: () => void;
+  actualCanvasSize: { width: number; height: number };
 }
 
 export default function TemplateList({
   templates,
   onDragStart,
   onDragEnd,
+  actualCanvasSize,
 }: TemplateListProps) {
   return (
     <div className="p-4 space-y-3">
@@ -24,6 +27,7 @@ export default function TemplateList({
             template={template}
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
+            actualCanvasSize={actualCanvasSize}
           />
         ))}
       </div>

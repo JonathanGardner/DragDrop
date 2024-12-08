@@ -1,0 +1,490 @@
+app/
+└── page.tsx
+components/
+├── Canvas.tsx
+├── DragDropCanvas.tsx
+├── DraggableTemplate.tsx
+├── PlaceholderIcons.tsx
+├── TemplateButton.tsx
+└── TemplateList.tsx
+
+Files:
+app/page.tsx
+import DragDropCanvas from '@/components/DragDropCanvas';
+
+export default function Home() {
+  return (
+    <main className="min-h-screen">
+      <DragDropCanvas />
+    </main>
+  );
+}
+
+--------------------------------------------------------------------------------
+
+components/Canvas.tsx
+"use client";
+
+import { DragEvent } from 'react';
+import { Template, DroppedTemplate } from '@/types';
+import DraggableTemplate from './DraggableTemplate';
+
+interface CanvasProps {
+  canvasRef: React.RefObject<HTMLDivElement>;
+  droppedTemplates: DroppedTemplate[];
+  draggedTemplate: Template | null;
+  dragPosition: { x: number; y: number };
+  isValidDrop: boolean;
+  actualCanvasSize: { width: number; height: number };
+  canvasRect: DOMRect | null;
+  onDrop: (e: DragEvent) => void;
+  onDragOver: (e: DragEvent) => void;
+  onUpdatePosition: (id: string, x: number, y: number) => void;
+}
+
+export default function Canvas({
+  canvasRef,
+  droppedTemplates,
+  draggedTemplate,
+  dragPosition,
+  isValidDrop,
+  actualCanvasSize,
+  canvasRect,
+  onDrop,
+  onDragOver,
+  onUpdatePosition,
+}: CanvasProps) {
+  return (
+    <div
+      ref={canvasRef}
+      className="bg-white border-2 border-dashed border-gray-700 rounded-lg relative aspect-[1/1.4142] w-1/2 mx-auto"
+      onDrop={onDrop}
+      onDragOver={onDragOver}
+    >
+      {canvasRect &&
+        droppedTemplates.map((item) => (
+          <DraggableTemplate
+            key={item.id}
+            template={item.template}
+            position={{ x: item.x, y: item.y }}
+            isDragging={false}
+            baseCanvasSize={{
+              width: 850,
+              height: 1100,
+            }}
+            actualCanvasSize={actualCanvasSize}
+            canvasOffset={{ left: canvasRect.left, top: canvasRect.top }}
+            onUpdatePosition={(newX, newY) => onUpdatePosition(item.id, newX, newY)}
+          />
+        ))}
+
+      {draggedTemplate && canvasRect && (
+        <DraggableTemplate
+          template={draggedTemplate}
+          position={dragPosition}
+          isDragging={true}
+          isValidDrop={isValidDrop}
+          baseCanvasSize={{
+            width: 850,
+            height: 1100,
+          }}
+          actualCanvasSize={actualCanvasSize}
+          canvasOffset={{ left: canvasRect.left, top: canvasRect.top }}
+        />
+      )}
+    </div>
+  );
+}
+
+--------------------------------------------------------------------------------
+
+components/DragDropCanvas.tsx
+"use client";
+
+import { useEffect } from 'react';
+import { templates } from '@/data/templates';
+import { useCanvas } from '@/hooks/useCanvas';
+import { useDragDrop } from '@/hooks/useDragDrop';
+import Canvas from './Canvas';
+import TemplateList from './TemplateList';
+
+export default function DragDropCanvas() {
+  const { canvasRef, actualCanvasSize, canvasRect } = useCanvas();
+  const {
+    droppedTemplates,
+    draggedTemplate,
+    dragPosition,
+    isValidDrop,
+    dragOffsetRef,
+    handleDragStart,
+    handleDragEnd,
+    isWithinBounds,
+    getAdjustedPosition,
+    setDragPosition,
+    setIsValidDrop,
+    setDroppedTemplates,
+  } = useDragDrop();
+
+  useEffect(() => {
+    const handleGlobalDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      if (draggedTemplate && canvasRef.current && canvasRect) {
+        const position = getAdjustedPosition(e.clientX, e.clientY, canvasRect);
+        setDragPosition(position);
+      }
+    };
+
+    window.addEventListener('dragover', handleGlobalDragOver);
+    return () => window.removeEventListener('dragover', handleGlobalDragOver);
+  }, [draggedTemplate, canvasRect, canvasRef, getAdjustedPosition, setDragPosition]);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (draggedTemplate && canvasRef.current && canvasRect) {
+      const position = getAdjustedPosition(e.clientX, e.clientY, canvasRect);
+      const isValid = isWithinBounds(position.x, position.y, draggedTemplate, actualCanvasSize);
+      setIsValidDrop(isValid);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (draggedTemplate && isValidDrop && canvasRef.current && canvasRect) {
+      const position = getAdjustedPosition(e.clientX, e.clientY, canvasRect);
+      
+      const relativeX = position.x / canvasRect.width;
+      const relativeY = position.y / canvasRect.height;
+
+      const newTemplate = {
+        id: `${draggedTemplate.id}-${Date.now()}`,
+        x: relativeX,
+        y: relativeY,
+        template: draggedTemplate,
+      };
+      setDroppedTemplates((prev) => [...prev, newTemplate]);
+    }
+    handleDragEnd();
+  };
+
+  const handleUpdatePosition = (id: string, x: number, y: number) => {
+    setDroppedTemplates((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, x, y } : item))
+    );
+  };
+
+  return (
+    <div className="flex h-screen">
+      <div className="flex-1 p-8 overflow-hidden">
+        <Canvas
+          canvasRef={canvasRef}
+          droppedTemplates={droppedTemplates}
+          draggedTemplate={draggedTemplate}
+          dragPosition={dragPosition}
+          isValidDrop={isValidDrop}
+          actualCanvasSize={actualCanvasSize}
+          canvasRect={canvasRect}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onUpdatePosition={handleUpdatePosition}
+        />
+      </div>
+      <div className="w-64 flex-shrink-0 border-l border-gray-200 bg-gray-50 overflow-y-auto">
+        <TemplateList
+          templates={templates}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        />
+      </div>
+    </div>
+  );
+}
+
+--------------------------------------------------------------------------------
+
+components/DraggableTemplate.tsx
+// DraggableTemplate.tsx
+"use client";
+
+import { useState, useEffect } from 'react';
+import { cn } from '@/lib/utils';
+import { Template, Position, CanvasSize, CanvasOffset } from '@/types';
+
+interface DraggableTemplateProps {
+  template: Template;
+  position: Position;
+  isDragging: boolean;
+  isValidDrop?: boolean;
+  baseCanvasSize: CanvasSize;
+  actualCanvasSize: CanvasSize;
+  canvasOffset: CanvasOffset;
+  onUpdatePosition?: (x: number, y: number) => void;
+}
+
+export default function DraggableTemplate({
+  template,
+  position,
+  isDragging,
+  isValidDrop = true,
+  baseCanvasSize,
+  actualCanvasSize,
+  canvasOffset,
+  onUpdatePosition,
+}: DraggableTemplateProps) {
+  const Icon = template.icon;
+
+  // Calculate template size based on actual canvas size
+  const templateWidth =
+    (template.width / baseCanvasSize.width) * actualCanvasSize.width;
+  const templateHeight =
+    (template.height / baseCanvasSize.height) * actualCanvasSize.height;
+
+  const [isDraggingInternal, setIsDraggingInternal] = useState(false);
+  const [initialMouseOffset, setInitialMouseOffset] = useState<Position>({
+    x: 0,
+    y: 0,
+  });
+  const [absolutePosition, setAbsolutePosition] = useState<Position>({ x: 0, y: 0 });
+
+  useEffect(() => {
+    if (!isDragging && !isDraggingInternal) {
+      // When not dragging, set the absolute position based on the percentage position
+      setAbsolutePosition({
+        x: position.x * actualCanvasSize.width,
+        y: position.y * actualCanvasSize.height,
+      });
+    } else if (isDragging && !isDraggingInternal) {
+      // When dragging from the TemplateButton to the canvas, use the provided absolute position
+      setAbsolutePosition({
+        x: position.x,
+        y: position.y,
+      });
+    }
+  }, [position, actualCanvasSize, isDragging, isDraggingInternal]);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!isDragging) {
+      e.preventDefault();
+      const mouseX = e.clientX - canvasOffset.left;
+      const mouseY = e.clientY - canvasOffset.top;
+
+      // Calculate the offset between the mouse position and the element's position
+      const offsetX = mouseX - absolutePosition.x;
+      const offsetY = mouseY - absolutePosition.y;
+
+      setIsDraggingInternal(true);
+      setInitialMouseOffset({ x: offsetX, y: offsetY });
+    }
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDraggingInternal) {
+        const mouseX = e.clientX - canvasOffset.left;
+        const mouseY = e.clientY - canvasOffset.top;
+
+        let newAbsoluteX = mouseX - initialMouseOffset.x;
+        let newAbsoluteY = mouseY - initialMouseOffset.y;
+
+        // Constrain within bounds
+        newAbsoluteX = Math.max(
+          0,
+          Math.min(newAbsoluteX, actualCanvasSize.width - templateWidth)
+        );
+        newAbsoluteY = Math.max(
+          0,
+          Math.min(newAbsoluteY, actualCanvasSize.height - templateHeight)
+        );
+
+        setAbsolutePosition({ x: newAbsoluteX, y: newAbsoluteY });
+      }
+    };
+
+    const handleMouseUp = () => {
+      if (isDraggingInternal) {
+        const newXPercentage = absolutePosition.x / actualCanvasSize.width;
+        const newYPercentage = absolutePosition.y / actualCanvasSize.height;
+
+        const boundedX = Math.max(0, Math.min(1, newXPercentage));
+        const boundedY = Math.max(0, Math.min(1, newYPercentage));
+
+        onUpdatePosition && onUpdatePosition(boundedX, boundedY);
+
+        setIsDraggingInternal(false);
+      }
+    };
+
+    if (isDraggingInternal) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      if (isDraggingInternal) {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+      }
+    };
+  }, [
+    isDraggingInternal,
+    initialMouseOffset,
+    absolutePosition,
+    actualCanvasSize,
+    onUpdatePosition,
+    canvasOffset,
+    templateWidth,
+    templateHeight,
+  ]);
+
+  const style = {
+    left: `${absolutePosition.x}px`,
+    top: `${absolutePosition.y}px`,
+    width: `${templateWidth}px`,
+    height: `${templateHeight}px`,
+    transform: isDragging && !isValidDrop ? 'rotate(6deg)' : 'rotate(0deg)',
+  };
+
+  return (
+    <div
+      onMouseDown={handleMouseDown}
+      className={cn(
+        'absolute transition-all duration-0',
+        isDraggingInternal ? 'cursor-grabbing' : 'cursor-move',
+        isDragging && 'pointer-events-none z-50',
+        isDragging && !isValidDrop && 'opacity-50',
+        isDragging && isValidDrop && 'opacity-90'
+      )}
+      style={style}
+    >
+      <div
+        className={cn(
+          'w-full h-full flex items-center justify-center bg-white rounded-lg shadow-sm ring-2',
+          isDragging && isValidDrop
+            ? 'ring-green-500'
+            : isDragging && !isValidDrop
+            ? 'ring-red-500'
+            : 'ring-gray-300'
+        )}
+      >
+        <Icon />
+      </div>
+    </div>
+  );
+}
+
+--------------------------------------------------------------------------------
+
+components/PlaceholderIcons.tsx
+// PlaceholderIcons.tsx
+import React from 'react';
+import { User, PenTool, Calendar, Mail } from 'lucide-react';
+
+const iconClassName = "w-6 h-6 text-gray-500";
+
+export const NamePlaceholder = () => (
+  <div className="flex items-center justify-center text-black space-x-2">
+    <User className={iconClassName} />
+    <span>Name</span>
+  </div>
+);
+
+export const SignaturePlaceholder = () => (
+  <div className="flex items-center justify-center text-black space-x-2">
+    <PenTool className={iconClassName} />
+    <span>Signature</span>
+  </div>
+);
+
+export const DatePlaceholder = () => (
+  <div className="flex items-center justify-center text-black space-x-2">
+    <Calendar className={iconClassName} />
+    <span>Date</span>
+  </div>
+);
+
+export const InitialsPlaceholder = () => (
+  <div className="flex items-center justify-center text-black space-x-2">
+    <User className={iconClassName} />
+    <span>Initials</span>
+  </div>
+);
+
+export const EmailPlaceholder = () => (
+  <div className="flex items-center justify-center text-black space-x-2">
+    <Mail className={iconClassName} />
+    <span>Email</span>
+  </div>
+);
+
+--------------------------------------------------------------------------------
+
+components/TemplateButton.tsx
+"use client";
+
+import { Template } from '@/types';
+
+interface TemplateButtonProps {
+  template: Template;
+  onDragStart: (template: Template, e: React.DragEvent) => void;
+  onDragEnd: () => void;
+}
+
+export default function TemplateButton({
+  template,
+  onDragStart,
+  onDragEnd,
+}: TemplateButtonProps) {
+  const Icon = template.icon;
+
+  return (
+    <div
+      draggable
+      onDragStart={(e) => onDragStart(template, e)}
+      onDragEnd={onDragEnd}
+      className="p-2 bg-white rounded-lg shadow-sm cursor-move hover:shadow-md transition-shadow flex items-center justify-center w-full"
+      style={{
+        height: template.height,
+      }}
+    >
+      <Icon />
+    </div>
+  );
+}
+
+--------------------------------------------------------------------------------
+
+components/TemplateList.tsx
+"use client";
+
+import { Template } from '@/types';
+import TemplateButton from './TemplateButton';
+
+interface TemplateListProps {
+  templates: Template[];
+  onDragStart: (template: Template, e: React.DragEvent) => void;
+  onDragEnd: () => void;
+}
+
+export default function TemplateList({
+  templates,
+  onDragStart,
+  onDragEnd,
+}: TemplateListProps) {
+  return (
+    <div className="p-4 space-y-3">
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">Templates</h2>
+      <div className="space-y-2">
+        {templates.map((template) => (
+          <TemplateButton
+            key={template.id}
+            template={template}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+--------------------------------------------------------------------------------
+

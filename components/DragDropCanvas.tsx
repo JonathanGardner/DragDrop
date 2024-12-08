@@ -1,3 +1,4 @@
+// components/DragDropCanvas.tsx
 "use client";
 
 import { useEffect } from 'react';
@@ -50,7 +51,7 @@ export default function DragDropCanvas() {
     e.preventDefault();
     if (draggedTemplate && isValidDrop && canvasRef.current && canvasRect) {
       const position = getAdjustedPosition(e.clientX, e.clientY, canvasRect);
-      
+
       const relativeX = position.x / canvasRect.width;
       const relativeY = position.y / canvasRect.height;
 
@@ -73,7 +74,7 @@ export default function DragDropCanvas() {
 
   return (
     <div className="flex h-screen">
-      <div className="flex-1 p-8 overflow-hidden">
+      <div className="flex-1 p-10">
         <Canvas
           canvasRef={canvasRef}
           droppedTemplates={droppedTemplates}
@@ -92,8 +93,10 @@ export default function DragDropCanvas() {
           templates={templates}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
+          actualCanvasSize={actualCanvasSize}
         />
       </div>
     </div>
   );
 }
+

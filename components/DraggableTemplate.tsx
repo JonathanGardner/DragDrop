@@ -153,12 +153,12 @@ export default function DraggableTemplate({
     >
       <div
         className={cn(
-          'w-full h-full flex items-center justify-center bg-white rounded-lg shadow-sm ring-2',
+          'w-full h-full flex bg-white rounded-lg shadow-sm ring-2',
           isDragging && isValidDrop
             ? 'ring-green-500'
             : isDragging && !isValidDrop
             ? 'ring-red-500'
-            : 'ring-gray-300'
+            : 'ring-green-500'
         )}
       >
         <Icon />
