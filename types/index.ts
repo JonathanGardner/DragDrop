@@ -1,32 +1,36 @@
-// types/index.ts
-import { ComponentType } from 'react';
+export interface PlaceholderProps {
+  iconSize?: number;
+  label?: string;
+}
 
-export type Template = {
+export interface Template {
   id: string;
-  icon: ComponentType;
-  label: string;
   width: number;
   height: number;
-};
+  icon: React.FC<PlaceholderProps>;
+  label?: string; // Added this property
+}
 
-export type DroppedTemplate = {
+export interface DroppedTemplate {
   id: string;
-  x: number; // x position as a percentage (0 to 1)
-  y: number; // y position as a percentage (0 to 1)
-  template: Template;
-};
-
-export type Position = {
   x: number;
   y: number;
-};
-
-export type CanvasSize = {
   width: number;
   height: number;
-};
+  template: Template;
+}
 
-export type CanvasOffset = {
+export interface Position {
+  x: number;
+  y: number;
+}
+
+export interface CanvasSize {
+  width: number;
+  height: number;
+}
+
+export interface CanvasOffset {
   left: number;
   top: number;
-};
+}

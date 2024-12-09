@@ -1,4 +1,3 @@
-// components/DragDropCanvas.tsx
 "use client";
 
 import { useEffect } from 'react';
@@ -7,6 +6,7 @@ import { useCanvas } from '@/hooks/useCanvas';
 import { useDragDrop } from '@/hooks/useDragDrop';
 import Canvas from './Canvas';
 import TemplateList from './TemplateList';
+import { DroppedTemplate } from '@/types';
 
 export default function DragDropCanvas() {
   const { canvasRef, actualCanvasSize, canvasRect } = useCanvas();
@@ -15,7 +15,6 @@ export default function DragDropCanvas() {
     draggedTemplate,
     dragPosition,
     isValidDrop,
-    dragOffsetRef,
     handleDragStart,
     handleDragEnd,
     isWithinBounds,
@@ -55,10 +54,16 @@ export default function DragDropCanvas() {
       const relativeX = position.x / canvasRect.width;
       const relativeY = position.y / canvasRect.height;
 
-      const newTemplate = {
+      const baseCanvasSize = { width: 850, height: 1100 };
+      const relativeW = draggedTemplate.width / baseCanvasSize.width;
+      const relativeH = draggedTemplate.height / baseCanvasSize.height;
+
+      const newTemplate: DroppedTemplate = {
         id: `${draggedTemplate.id}-${Date.now()}`,
         x: relativeX,
         y: relativeY,
+        width: relativeW,
+        height: relativeH,
         template: draggedTemplate,
       };
       setDroppedTemplates((prev) => [...prev, newTemplate]);
@@ -70,6 +75,30 @@ export default function DragDropCanvas() {
     setDroppedTemplates((prev) =>
       prev.map((item) => (item.id === id ? { ...item, x, y } : item))
     );
+  };
+
+  const handleUpdateSize = (id: string, width: number, height: number) => {
+    setDroppedTemplates((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, width, height } : item))
+    );
+  };
+
+  const handleDuplicate = (id: string) => {
+    setDroppedTemplates((prev) => {
+      const item = prev.find((t) => t.id === id);
+      if (!item) return prev;
+      const newItem: DroppedTemplate = {
+        ...item,
+        id: `${item.template.id}-${Date.now()}`,
+        x: Math.min(item.x + 0.02, 1), // offset by a small amount
+        y: Math.min(item.y + 0.02, 1),
+      };
+      return [...prev, newItem];
+    });
+  };
+
+  const handleDelete = (id: string) => {
+    setDroppedTemplates((prev) => prev.filter((t) => t.id !== id));
   };
 
   return (
@@ -86,6 +115,9 @@ export default function DragDropCanvas() {
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onUpdatePosition={handleUpdatePosition}
+          onUpdateSize={handleUpdateSize}
+          onDuplicate={handleDuplicate}
+          onDelete={handleDelete}
         />
       </div>
       <div className="w-64 flex-shrink-0 border-l border-gray-200 bg-gray-50 overflow-y-auto">
@@ -99,4 +131,3 @@ export default function DragDropCanvas() {
     </div>
   );
 }
-

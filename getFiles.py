@@ -62,7 +62,7 @@ def get_tsx_files(tree, root_dir):
     return tsx_files
 
 def main():
-    root_dirs = ['app', 'components', 'data', 'hooks']
+    root_dirs = ['app', 'components', 'data', 'hooks','types']
     all_tsx_files = []
 
     # Build and print the tree

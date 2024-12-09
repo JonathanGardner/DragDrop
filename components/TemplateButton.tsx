@@ -1,4 +1,4 @@
-// components/TemplateButton.tsx
+// TemplateButton.tsx
 "use client";
 
 import { Template } from '@/types';
@@ -24,18 +24,24 @@ export default function TemplateButton({
   const templateHeight =
     (template.height / baseCanvasSize.height) * actualCanvasSize.height;
 
+  const minDimension = Math.min(templateWidth, templateHeight);
+  // Apply same scaling logic here
+  const fontSize = minDimension * 0.5;
+  const iconSize = minDimension * 0.7;
+
   return (
     <div
       draggable
       onDragStart={(e) => onDragStart(template, e)}
       onDragEnd={onDragEnd}
-      className="bg-white rounded-lg shadow-sm cursor-move hover:shadow-md transition-shadow flex"
+      className="bg-white rounded-lg shadow-sm cursor-move hover:shadow-md transition-shadow flex items-center justify-center"
       style={{
-        width: templateWidth,
-        height: templateHeight,
+        width: `${templateWidth}px`,
+        height: `${templateHeight}px`,
+        fontSize: `${fontSize}px`,
       }}
     >
-      <Icon />
+      <Icon iconSize={iconSize} label={template.id} />
     </div>
   );
 }
