@@ -1,24 +1,26 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { Template, Position, CanvasSize, CanvasOffset } from '@/types';
 import { Copy, Trash } from 'lucide-react';
 
 interface DraggableTemplateProps {
   template: Template;
-  position: Position;
-  width: number;
-  height: number;
+  // Fractional position and size relative to the canvas
+  position: Position; // { x: 0..1, y: 0..1 }
+  width: number;      // fraction of the canvas width (0..1)
+  height: number;     // fraction of the canvas height (0..1)
   isDragging: boolean;
   isValidDrop?: boolean;
   baseCanvasSize: CanvasSize;
   actualCanvasSize: CanvasSize;
   canvasOffset: CanvasOffset;
-  onUpdatePosition?: (x: number, y: number) => void;
-  onUpdateSize?: (width: number, height: number) => void;
+  onUpdatePosition?: (xFrac: number, yFrac: number) => void;
+  onUpdateSize?: (wFrac: number, hFrac: number) => void;
   onDuplicate?: () => void;
   onDelete?: () => void;
+  isPreview?: boolean;  // If true, no drag/resize logic, just a static preview
 }
 
 type ResizeHandle =
@@ -45,65 +47,95 @@ export default function DraggableTemplate({
   onUpdateSize,
   onDuplicate,
   onDelete,
+  isPreview = false,
 }: DraggableTemplateProps) {
   const Icon = template.icon;
 
-  const [absolutePosition, setAbsolutePosition] = useState<Position>({ x: 0, y: 0 });
-  const [absoluteWidth, setAbsoluteWidth] = useState(0);
-  const [absoluteHeight, setAbsoluteHeight] = useState(0);
-
-  const [isDraggingInternal, setIsDraggingInternal] = useState(false);
-  const [initialMouseOffset, setInitialMouseOffset] = useState<Position>({ x: 0, y: 0 });
-
-  // Resizing states
-  const [isResizing, setIsResizing] = useState(false);
-  const [resizeHandle, setResizeHandle] = useState<ResizeHandle | null>(null);
-  const [initialResizeMousePos, setInitialResizeMousePos] = useState<Position>({ x: 0, y: 0 });
-  const [initialResizeDims, setInitialResizeDims] = useState<{ x: number; y: number; w: number; h: number }>({
-    x: 0,
-    y: 0,
-    w: 0,
-    h: 0,
-  });
-
-  // State for showing the menu
-  const [showMenu, setShowMenu] = useState(false);
-
-  useEffect(() => {
-    if (isDragging && !isDraggingInternal && !isResizing) {
-      setAbsolutePosition({ x: position.x, y: position.y });
-      setAbsoluteWidth(width * actualCanvasSize.width);
-      setAbsoluteHeight(height * actualCanvasSize.height);
-    } else if (!isDraggingInternal && !isResizing && !isDragging) {
-      setAbsolutePosition({
-        x: position.x * actualCanvasSize.width,
-        y: position.y * actualCanvasSize.height,
-      });
-      setAbsoluteWidth(width * actualCanvasSize.width);
-      setAbsoluteHeight(height * actualCanvasSize.height);
-    }
-  }, [position, width, height, actualCanvasSize, isDragging, isDraggingInternal, isResizing]);
+  // Compute absolute sizes/positions from fractions
+  const absoluteX = position.x * actualCanvasSize.width;
+  const absoluteY = position.y * actualCanvasSize.height;
+  const absoluteWidth = width * actualCanvasSize.width;
+  const absoluteHeight = height * actualCanvasSize.height;
 
   const fontSize = Math.min(absoluteWidth, absoluteHeight) * 0.5;
   const iconSize = Math.min(absoluteWidth, absoluteHeight) * 0.7;
 
+  // If this is a preview, we skip dragging/resizing and show static preview
+  if (isPreview) {
+    return (
+      <div
+        className={cn(
+          'absolute pointer-events-none',
+          isDragging && !isValidDrop && 'opacity-50',
+          isDragging && isValidDrop && 'opacity-90'
+        )}
+        style={{
+          width: `${absoluteWidth}px`,
+          height: `${absoluteHeight}px`,
+          fontSize: `${fontSize}px`,
+          top: 0,
+          left: 0,
+          position: 'absolute',
+        }}
+      >
+        <div
+          className={cn(
+            'w-full h-full flex bg-white rounded-lg shadow-sm ring-2 relative',
+            isDragging && isValidDrop
+              ? 'ring-green-500 rotate-6)'
+              : isDragging && !isValidDrop
+              ? 'ring-red-500 rotate-6'
+              : 'ring-green-500'
+          )}
+        >
+          <Icon iconSize={iconSize} label={template.id} />
+        </div>
+      </div>
+    );
+  }
+
+  // Non-preview mode: enable drag/resize
+  const [isDraggingInternal, setIsDraggingInternal] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeHandle, setResizeHandle] = useState<ResizeHandle | null>(null);
+
+  // Store initial mouse offsets and initial fractions for dragging/resizing
+  const [initialMouse, setInitialMouse] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [initialPosition, setInitialPosition] = useState<Position>({ x: position.x, y: position.y });
+  const [initialSize, setInitialSize] = useState<{ w: number; h: number }>({ w: width, h: height });
+
+  const handles: { handle: ResizeHandle; style: React.CSSProperties }[] = [
+    { handle: 'top-left', style: { top: 0, left: 0, cursor: 'nw-resize' } },
+    { handle: 'top', style: { top: 0, left: '50%', transform: 'translateX(-50%)', cursor: 'n-resize' } },
+    { handle: 'top-right', style: { top: 0, right: 0, cursor: 'ne-resize' } },
+    { handle: 'right', style: { right: 0, top: '50%', transform: 'translateY(-50%)', cursor: 'e-resize' } },
+    { handle: 'bottom-right', style: { bottom: 0, right: 0, cursor: 'se-resize' } },
+    { handle: 'bottom', style: { bottom: 0, left: '50%', transform: 'translateX(-50%)', cursor: 's-resize' } },
+    { handle: 'bottom-left', style: { bottom: 0, left: 0, cursor: 'sw-resize' } },
+    { handle: 'left', style: { left: 0, top: '50%', transform: 'translateY(-50%)', cursor: 'w-resize' } },
+  ];
+
+  const [showMenu, setShowMenu] = useState(false);
+
+  const handleTemplateClick = (e: React.MouseEvent) => {
+    if (isDragging || isDraggingInternal || isResizing) return;
+    e.stopPropagation();
+    setShowMenu((prev) => !prev);
+  };
+
   const handleMouseDown = (e: React.MouseEvent) => {
-    // If click is on the menu area, do not drag
     if ((e.target as HTMLElement).closest('.template-menu')) {
       return;
     }
-
     if (!isDragging && !isResizing) {
       e.preventDefault();
       const mouseX = e.clientX - canvasOffset.left;
       const mouseY = e.clientY - canvasOffset.top;
 
-      const offsetX = mouseX - absolutePosition.x;
-      const offsetY = mouseY - absolutePosition.y;
-
+      // We are starting a drag
       setIsDraggingInternal(true);
-      setInitialMouseOffset({ x: offsetX, y: offsetY });
-      // Do not toggle menu here since we are dragging
+      setInitialMouse({ x: mouseX, y: mouseY });
+      setInitialPosition({ x: position.x, y: position.y });
     }
   };
 
@@ -113,130 +145,103 @@ export default function DraggableTemplate({
     if (!isDraggingInternal) {
       setIsResizing(true);
       setResizeHandle(handle);
-      setInitialResizeMousePos({ x: e.clientX, y: e.clientY });
-      setInitialResizeDims({
-        x: absolutePosition.x,
-        y: absolutePosition.y,
-        w: absoluteWidth,
-        h: absoluteHeight,
-      });
-      setShowMenu(false); // Hide menu when resizing starts
+      setInitialMouse({ x: e.clientX - canvasOffset.left, y: e.clientY - canvasOffset.top });
+      setInitialPosition({ x: position.x, y: position.y });
+      setInitialSize({ w: width, h: height });
+      setShowMenu(false);
     }
   };
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (isDraggingInternal && !isResizing) {
+        // Dragging
         const mouseX = e.clientX - canvasOffset.left;
         const mouseY = e.clientY - canvasOffset.top;
 
-        let newAbsoluteX = mouseX - initialMouseOffset.x;
-        let newAbsoluteY = mouseY - initialMouseOffset.y;
+        // Compute delta in absolute pixels
+        const dx = mouseX - initialMouse.x;
+        const dy = mouseY - initialMouse.y;
 
-        newAbsoluteX = Math.max(
-          0,
-          Math.min(newAbsoluteX, actualCanvasSize.width - absoluteWidth)
-        );
-        newAbsoluteY = Math.max(
-          0,
-          Math.min(newAbsoluteY, actualCanvasSize.height - absoluteHeight)
-        );
+        // Convert dx, dy to fractions
+        const newXFrac = initialPosition.x + dx / actualCanvasSize.width;
+        const newYFrac = initialPosition.y + dy / actualCanvasSize.height;
 
-        setAbsolutePosition({ x: newAbsoluteX, y: newAbsoluteY });
+        // Clamp to [0..1 - w/h] so template stays inside
+        const clampedX = Math.min(Math.max(newXFrac, 0), 1 - width);
+        const clampedY = Math.min(Math.max(newYFrac, 0), 1 - height);
+
+        onUpdatePosition?.(clampedX, clampedY);
       }
 
       if (isResizing && resizeHandle) {
-        const deltaX = e.clientX - initialResizeMousePos.x;
-        const deltaY = e.clientY - initialResizeMousePos.y;
+        // Resizing
+        const mouseX = e.clientX - canvasOffset.left;
+        const mouseY = e.clientY - canvasOffset.top;
+        const dx = mouseX - initialMouse.x;
+        const dy = mouseY - initialMouse.y;
 
-        let { x, y, w, h } = initialResizeDims;
+        let newXFrac = initialPosition.x;
+        let newYFrac = initialPosition.y;
+        let newWFrac = initialSize.w;
+        let newHFrac = initialSize.h;
 
+        const dxFrac = dx / actualCanvasSize.width;
+        const dyFrac = dy / actualCanvasSize.height;
+
+        // Adjust fractions based on handle
         switch (resizeHandle) {
           case 'right':
-            w = Math.max(10, initialResizeDims.w + deltaX);
+            newWFrac = Math.max(0.01, initialSize.w + dxFrac);
             break;
           case 'bottom':
-            h = Math.max(10, initialResizeDims.h + deltaY);
+            newHFrac = Math.max(0.01, initialSize.h + dyFrac);
             break;
           case 'bottom-right':
-            w = Math.max(10, initialResizeDims.w + deltaX);
-            h = Math.max(10, initialResizeDims.h + deltaY);
+            newWFrac = Math.max(0.01, initialSize.w + dxFrac);
+            newHFrac = Math.max(0.01, initialSize.h + dyFrac);
             break;
           case 'left':
-            w = Math.max(10, initialResizeDims.w - deltaX);
-            x = x + (initialResizeDims.w - w);
+            newWFrac = Math.max(0.01, initialSize.w - dxFrac);
+            newXFrac = initialPosition.x + (initialSize.w - newWFrac);
             break;
           case 'top':
-            h = Math.max(10, initialResizeDims.h - deltaY);
-            y = y + (initialResizeDims.h - h);
+            newHFrac = Math.max(0.01, initialSize.h - dyFrac);
+            newYFrac = initialPosition.y + (initialSize.h - newHFrac);
             break;
           case 'top-left':
-            w = Math.max(10, initialResizeDims.w - deltaX);
-            x = x + (initialResizeDims.w - w);
-            h = Math.max(10, initialResizeDims.h - deltaY);
-            y = y + (initialResizeDims.h - h);
+            newWFrac = Math.max(0.01, initialSize.w - dxFrac);
+            newXFrac = initialPosition.x + (initialSize.w - newWFrac);
+            newHFrac = Math.max(0.01, initialSize.h - dyFrac);
+            newYFrac = initialPosition.y + (initialSize.h - newHFrac);
             break;
           case 'top-right':
-            w = Math.max(10, initialResizeDims.w + deltaX);
-            h = Math.max(10, initialResizeDims.h - deltaY);
-            y = y + (initialResizeDims.h - h);
+            newWFrac = Math.max(0.01, initialSize.w + dxFrac);
+            newHFrac = Math.max(0.01, initialSize.h - dyFrac);
+            newYFrac = initialPosition.y + (initialSize.h - newHFrac);
             break;
           case 'bottom-left':
-            w = Math.max(10, initialResizeDims.w - deltaX);
-            x = x + (initialResizeDims.w - w);
-            h = Math.max(10, initialResizeDims.h + deltaY);
+            newWFrac = Math.max(0.01, initialSize.w - dxFrac);
+            newXFrac = initialPosition.x + (initialSize.w - newWFrac);
+            newHFrac = Math.max(0.01, initialSize.h + dyFrac);
             break;
         }
 
-        // Constrain within canvas
-        if (x < 0) {
-          w += x;
-          x = 0;
-        }
-        if (y < 0) {
-          h += y;
-          y = 0;
-        }
-        if (x + w > actualCanvasSize.width) {
-          w = actualCanvasSize.width - x;
-        }
-        if (y + h > actualCanvasSize.height) {
-          h = actualCanvasSize.height - y;
-        }
+        // Clamp so it stays inside [0,1]
+        newXFrac = Math.min(Math.max(newXFrac, 0), 1 - newWFrac);
+        newYFrac = Math.min(Math.max(newYFrac, 0), 1 - newHFrac);
 
-        setAbsolutePosition({ x, y });
-        setAbsoluteWidth(w);
-        setAbsoluteHeight(h);
+        onUpdatePosition?.(newXFrac, newYFrac);
+        onUpdateSize?.(newWFrac, newHFrac);
       }
     };
 
     const handleMouseUp = () => {
       if (isDraggingInternal && !isResizing) {
-        const newXPercentage = absolutePosition.x / actualCanvasSize.width;
-        const newYPercentage = absolutePosition.y / actualCanvasSize.height;
-
-        const boundedX = Math.max(0, Math.min(1, newXPercentage));
-        const boundedY = Math.max(0, Math.min(1, newYPercentage));
-
-        onUpdatePosition?.(boundedX, boundedY);
         setIsDraggingInternal(false);
       }
 
       if (isResizing && resizeHandle) {
-        const newXPercentage = absolutePosition.x / actualCanvasSize.width;
-        const newYPercentage = absolutePosition.y / actualCanvasSize.height;
-        const newWPercentage = absoluteWidth / actualCanvasSize.width;
-        const newHPercentage = absoluteHeight / actualCanvasSize.height;
-
-        onUpdatePosition?.(
-          Math.max(0, Math.min(1, newXPercentage)),
-          Math.max(0, Math.min(1, newYPercentage))
-        );
-        onUpdateSize?.(
-          Math.max(0.01, Math.min(1, newWPercentage)),
-          Math.max(0.01, Math.min(1, newHPercentage))
-        );
-
         setIsResizing(false);
         setResizeHandle(null);
       }
@@ -257,43 +262,24 @@ export default function DraggableTemplate({
     isDraggingInternal,
     isResizing,
     resizeHandle,
-    initialMouseOffset,
-    absolutePosition,
-    absoluteWidth,
-    absoluteHeight,
+    initialMouse,
+    initialPosition,
+    initialSize,
     actualCanvasSize,
+    width,
+    height,
     onUpdatePosition,
     onUpdateSize,
-    canvasOffset,
-    initialResizeMousePos,
-    initialResizeDims,
+    canvasOffset
   ]);
 
   const style = {
-    left: `${absolutePosition.x}px`,
-    top: `${absolutePosition.y}px`,
+    left: `${absoluteX}px`,
+    top: `${absoluteY}px`,
     width: `${absoluteWidth}px`,
     height: `${absoluteHeight}px`,
     transform: isDragging && !isValidDrop ? 'rotate(6deg)' : 'rotate(0deg)',
     fontSize: `${fontSize}px`,
-  };
-
-  const handles: { handle: ResizeHandle; style: React.CSSProperties }[] = [
-    { handle: 'top-left', style: { top: 0, left: 0, cursor: 'nw-resize' } },
-    { handle: 'top', style: { top: 0, left: '50%', transform: 'translateX(-50%)', cursor: 'n-resize' } },
-    { handle: 'top-right', style: { top: 0, right: 0, cursor: 'ne-resize' } },
-    { handle: 'right', style: { right: 0, top: '50%', transform: 'translateY(-50%)', cursor: 'e-resize' } },
-    { handle: 'bottom-right', style: { bottom: 0, right: 0, cursor: 'se-resize' } },
-    { handle: 'bottom', style: { bottom: 0, left: '50%', transform: 'translateX(-50%)', cursor: 's-resize' } },
-    { handle: 'bottom-left', style: { bottom: 0, left: 0, cursor: 'sw-resize' } },
-    { handle: 'left', style: { left: 0, top: '50%', transform: 'translateY(-50%)', cursor: 'w-resize' } },
-  ];
-
-  const handleTemplateClick = (e: React.MouseEvent) => {
-    if (isDragging || isDraggingInternal || isResizing) return;
-    e.stopPropagation();
-    // Toggle the menu on each click
-    setShowMenu((prev) => !prev);
   };
 
   return (
@@ -303,8 +289,8 @@ export default function DraggableTemplate({
       className={cn(
         'absolute transition-all duration-0 group',
         isDraggingInternal ? 'cursor-grabbing' : 'cursor-move',
-        isDragging && 'pointer-events-none z-50',
-        isDragging && !isValidDrop && 'opacity-50',
+        (isDragging && !isPreview) && 'pointer-events-none z-50',
+        isDragging && !isValidDrop && 'opacity-40',
         isDragging && isValidDrop && 'opacity-90'
       )}
       style={style}
@@ -321,7 +307,7 @@ export default function DraggableTemplate({
       >
         <Icon iconSize={iconSize} label={template.id} />
 
-        {!isDragging && !isDraggingInternal && (
+        {!isDragging && !isDraggingInternal && !isPreview && (
           <>
             {handles.map((h) => (
               <div

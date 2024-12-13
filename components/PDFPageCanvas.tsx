@@ -4,14 +4,14 @@ import { DragEvent } from 'react';
 import { Template, DroppedTemplate } from '@/types';
 import DraggableTemplate from './DraggableTemplate';
 
-interface CanvasProps {
-  canvasRef: React.RefObject<HTMLDivElement>;
+interface PDFPageCanvasProps {
+  pageRef: React.RefObject<HTMLDivElement>;
   droppedTemplates: DroppedTemplate[];
   draggedTemplate: Template | null;
   dragPosition: { x: number; y: number };
   isValidDrop: boolean;
   actualCanvasSize: { width: number; height: number };
-  canvasRect: DOMRect | null;
+  pageRect: DOMRect | null;
   onDrop: (e: DragEvent) => void;
   onDragOver: (e: DragEvent) => void;
   onUpdatePosition: (id: string, x: number, y: number) => void;
@@ -20,32 +20,36 @@ interface CanvasProps {
   onDelete?: (id: string) => void;
 }
 
-export default function Canvas({
-  canvasRef,
+export default function PDFPageCanvas({
+  pageRef,
   droppedTemplates,
   draggedTemplate,
   dragPosition,
   isValidDrop,
   actualCanvasSize,
-  canvasRect,
+  pageRect,
   onDrop,
   onDragOver,
   onUpdatePosition,
   onUpdateSize,
   onDuplicate,
   onDelete,
-}: CanvasProps) {
+}: PDFPageCanvasProps) {
   const handleDuplicate = onDuplicate ?? (() => {});
   const handleDelete = onDelete ?? (() => {});
 
   return (
     <div
-      ref={canvasRef}
-      className="bg-white border-2 border-dashed border-gray-700 rounded-lg relative aspect-[1/1.4142] w-1/2 mx-auto"
+      className="absolute top-0 left-0 border rounded-lg"
+      style={{
+        width: '100%',
+        height: '100%',
+        pointerEvents: 'all',
+      }}
       onDrop={onDrop}
       onDragOver={onDragOver}
     >
-      {canvasRect &&
+      {pageRect &&
         droppedTemplates.map((item) => (
           <DraggableTemplate
             key={item.id}
@@ -54,39 +58,15 @@ export default function Canvas({
             width={item.width}
             height={item.height}
             isDragging={false}
-            baseCanvasSize={{
-              width: 850,
-              height: 1100,
-            }}
+            baseCanvasSize={{ width: 850, height: 1100 }}
             actualCanvasSize={actualCanvasSize}
-            canvasOffset={{ left: canvasRect.left, top: canvasRect.top }}
+            canvasOffset={{ left: pageRect.left, top: pageRect.top }}
             onUpdatePosition={(newX, newY) => onUpdatePosition(item.id, newX, newY)}
             onUpdateSize={(newW, newH) => onUpdateSize(item.id, newW, newH)}
             onDuplicate={() => handleDuplicate(item.id)}
             onDelete={() => handleDelete(item.id)}
           />
         ))}
-
-      {draggedTemplate && canvasRect && (
-        <DraggableTemplate
-          template={draggedTemplate}
-          position={dragPosition}
-          width={draggedTemplate.width / 850}
-          height={draggedTemplate.height / 1100}
-          isDragging={true}
-          isValidDrop={isValidDrop}
-          baseCanvasSize={{
-            width: 850,
-            height: 1100,
-          }}
-          actualCanvasSize={actualCanvasSize}
-          canvasOffset={{ left: canvasRect.left, top: canvasRect.top }}
-          // For dragged (not placed yet) templates, no menu actions are needed
-          // Pass no-op functions to prevent errors
-          onDuplicate={() => {}}
-          onDelete={() => {}}
-        />
-      )}
     </div>
   );
 }
