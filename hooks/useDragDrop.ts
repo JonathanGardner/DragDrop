@@ -1,37 +1,21 @@
-"use client";
+import { useState } from 'react';
+import { Template } from '@/types';
 
-import { useState, useRef, useEffect } from 'react';
-import { Template, DroppedTemplate, CanvasSize, Position } from '@/types';
-import { BASE_CANVAS_WIDTH, BASE_CANVAS_HEIGHT } from './useCanvas';
+interface Position {
+  x: number;
+  y: number;
+}
 
 export function useDragDrop() {
-  const [droppedTemplates, setDroppedTemplates] = useState<DroppedTemplate[]>([]);
   const [draggedTemplate, setDraggedTemplate] = useState<Template | null>(null);
   const [dragPosition, setDragPosition] = useState<Position>({ x: 0, y: 0 });
   const [isValidDrop, setIsValidDrop] = useState(false);
-  const dragOffsetRef = useRef<Position>({ x: 0, y: 0 });
+  const [dragOffset, setDragOffset] = useState<{ xFrac: number; yFrac: number }>({ xFrac: 0, yFrac: 0 });
 
-  const getAdjustedPosition = (clientX: number, clientY: number, canvasRect: DOMRect): Position => {
-    const scrollX = window.scrollX;
-    const scrollY = window.scrollY;
-    
-    return {
-      x: clientX + scrollX - canvasRect.left - dragOffsetRef.current.x,
-      y: clientY + scrollY - canvasRect.top - dragOffsetRef.current.y,
-    };
-  };
-
-  const handleDragStart = (template: Template, e: React.DragEvent) => {
+  const handleDragStart = (template: Template, e: React.DragEvent, offsetXFrac: number, offsetYFrac: number) => {
     setDraggedTemplate(template);
-    const rect = e.currentTarget.getBoundingClientRect();
-    dragOffsetRef.current = {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    };
-
-    const dragImg = new Image();
-    dragImg.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-    e.dataTransfer.setDragImage(dragImg, dragOffsetRef.current.x, dragOffsetRef.current.y);
+    // Store offset fractions relative to the template size
+    setDragOffset({ xFrac: offsetXFrac, yFrac: offsetYFrac });
   };
 
   const handleDragEnd = () => {
@@ -39,35 +23,45 @@ export function useDragDrop() {
     setIsValidDrop(false);
   };
 
-  const isWithinBounds = (
-    x: number,
-    y: number,
-    template: Template,
-    canvasSize: CanvasSize
-  ) => {
-    const templateWidth = (template.width / BASE_CANVAS_WIDTH) * canvasSize.width;
-    const templateHeight = (template.height / BASE_CANVAS_HEIGHT) * canvasSize.height;
+  const getAdjustedPosition = (clientX: number, clientY: number, rect: DOMRect) => {
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    return { x, y };
+  };
+
+  const isWithinBounds = (x: number, y: number, template: Template, actualCanvasSize: { width: number; height: number }) => {
+    // Determine width and height in pixels at current scale
+    const baseCanvas = { width: 850, height: 1100 };
+    const templateWFrac = template.width / baseCanvas.width;
+    const templateHFrac = template.height / baseCanvas.height;
+
+    const templateWidthPx = templateWFrac * actualCanvasSize.width;
+    const templateHeightPx = templateHFrac * actualCanvasSize.height;
+
+    // Check if top-left corner (x - offset, y - offset) would be inside the canvas:
+    // Because we will place template so that the user's clicked point remains under the cursor,
+    // the top-left of the template is (x - offsetX * templateWidthPx, y - offsetY * templateHeightPx)
+    const topLeftX = x - dragOffset.xFrac * templateWidthPx;
+    const topLeftY = y - dragOffset.yFrac * templateHeightPx;
 
     return (
-      x >= 0 &&
-      y >= 0 &&
-      x + templateWidth <= canvasSize.width &&
-      y + templateHeight <= canvasSize.height
+      topLeftX >= 0 &&
+      topLeftY >= 0 &&
+      topLeftX + templateWidthPx <= actualCanvasSize.width &&
+      topLeftY + templateHeightPx <= actualCanvasSize.height
     );
   };
 
   return {
-    droppedTemplates,
-    setDroppedTemplates,
     draggedTemplate,
     dragPosition,
-    setDragPosition,
     isValidDrop,
-    setIsValidDrop,
-    dragOffsetRef,
+    dragOffset,
     handleDragStart,
     handleDragEnd,
-    isWithinBounds,
+    setDragPosition,
+    setIsValidDrop,
     getAdjustedPosition,
+    isWithinBounds,
   };
 }
